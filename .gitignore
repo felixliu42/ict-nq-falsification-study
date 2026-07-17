@@ -1,0 +1,19 @@
+# Market data — too large for GitHub (regenerate via src/download_databento.py)
+data/*
+!data/README.md
+archive/data/
+
+# Caches & build artifacts
+__pycache__/
+*.pyc
+data/cache/
+*.egg-info/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Secrets — never commit API keys
+.env

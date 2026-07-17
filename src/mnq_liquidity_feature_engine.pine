@@ -1,0 +1,1375 @@
+//@version=6
+indicator("MNQ Liquidity Feature Engine (ML Export)", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+
+// ==========================================
+// 1. INPUTS & CONFIGURATION
+// ==========================================
+session_ny      = input.session("0800-1700", "New York Session Hours", tooltip="America/New_York time zone")
+session_london  = input.session("0300-1200", "London Session Hours", tooltip="America/New_York time zone")
+session_asian   = input.session("1900-0300", "Asian Session Hours", tooltip="America/New_York time zone")
+
+atr_len         = input.int(14, "ATR Length", minval=1, tooltip="Used for volatility calculations and stacked levels")
+show_debug      = input.bool(true, "Show Debug Plots on Chart", tooltip="Draw lines for levels, triangles for sweeps, and labels for BOS")
+lookback_bars   = input.int(10, "Post-Trade Bias Reset Lookback", minval=1, maxval=50, tooltip="Number of bars to retrospectively analyze when a trade exits")
+
+// ==========================================
+// 2. HELPER FUNCTIONS
+// ==========================================
+// Safe division to prevent division by zero in normalizations
+f_safe_div(float num, float den) =>
+    den == 0.0 ? 0.0 : num / den
+
+// ==========================================
+// 2.5. ROLLING LIQUIDITY LANDSCAPE UDT & HELPERS
+// ==========================================
+type LiquidityPool
+    float price
+    float strength_score
+    bool active
+    line line_id
+
+// Function to add a new swing level to the rolling landscape
+f_add_liquidity_pool(LiquidityPool[] arr, float price, int time_val, float atr_val, bool is_high) =>
+    if not na(price) and not na(atr_val) and atr_val > 0.0
+        // 1. Check if it is a Higher High / Lower Low (structural expansion)
+        bool is_expansion = true
+        int arr_size = array.size(arr)
+        if arr_size > 0
+            for i = 0 to arr_size - 1
+                LiquidityPool p = array.get(arr, i)
+                if p.active
+                    if is_high
+                        if price <= p.price
+                            is_expansion := false
+                            break
+                    else
+                        if price >= p.price
+                            is_expansion := false
+                            break
+        
+        // 2. Check proximity and cluster strength
+        bool has_near_cluster = false
+        float max_near_strength = 0.0
+        if arr_size > 0
+            for i = 0 to arr_size - 1
+                LiquidityPool p = array.get(arr, i)
+                if p.active
+                    float dist = math.abs(price - p.price)
+                    if dist < atr_val * 1.5
+                        has_near_cluster := true
+                        if p.strength_score > max_near_strength
+                            max_near_strength := p.strength_score
+                            
+        // 3. Check validity: expansion OR (not in a stronger cluster)
+        bool is_valid = is_expansion or (not has_near_cluster or max_near_strength <= 1.0)
+        
+        if is_valid
+            // Create line for debug visualization if enabled
+            line l_id = na
+            if show_debug
+                color l_color = is_high ? color.new(color.red, 30) : color.new(color.green, 30)
+                l_id := line.new(x1=time_val, y1=price, x2=time, y2=price, xloc=xloc.bar_time, color=l_color, width=1)
+                
+            // Create new pool
+            LiquidityPool new_pool = LiquidityPool.new(price, 1.0, true, l_id)
+            
+            // Stacking logic: if price is close to any existing active level, group them
+            if arr_size > 0
+                for i = 0 to arr_size - 1
+                    LiquidityPool p = array.get(arr, i)
+                    if p.active
+                        float dist = math.abs(price - p.price)
+                        if dist < atr_val * 1.5
+                            p.strength_score := p.strength_score + 0.5
+                            new_pool.strength_score := new_pool.strength_score + 0.5
+                            
+            array.push(arr, new_pool)
+
+// Function to update mitigations with close confirmation using timeframe-specific close price
+f_update_mitigations(LiquidityPool[] arr, bool is_high, float close_val) =>
+    int arr_size = array.size(arr)
+    if arr_size > 0
+        for i = 0 to arr_size - 1
+            LiquidityPool p = array.get(arr, i)
+            if p.active
+                if is_high
+                    if close_val >= p.price
+                        p.active := false
+                        if not na(p.line_id)
+                            line.set_color(p.line_id, color.new(color.gray, 60))
+                            line.set_style(p.line_id, line.style_dashed)
+                else
+                    if close_val <= p.price
+                        p.active := false
+                        if not na(p.line_id)
+                            line.set_color(p.line_id, color.new(color.gray, 60))
+                            line.set_style(p.line_id, line.style_dashed)
+
+// Function to check if a sweep occurs on any active pool in the current bar (breach-based)
+f_check_sweep(LiquidityPool[] arr, bool is_high) =>
+    bool swept = false
+    float max_strength = 0.0
+    int arr_size = array.size(arr)
+    if arr_size > 0
+        for i = 0 to arr_size - 1
+            LiquidityPool p = array.get(arr, i)
+            if p.active
+                if is_high
+                    if high >= p.price
+                        swept := true
+                        if p.strength_score > max_strength
+                            max_strength := p.strength_score
+                else
+                    if low <= p.price
+                        swept := true
+                        if p.strength_score > max_strength
+                            max_strength := p.strength_score
+    [swept, max_strength]
+
+// Function to extend active debug lines to the current bar
+f_extend_active_lines(LiquidityPool[] arr) =>
+    int arr_size = array.size(arr)
+    if arr_size > 0
+        for i = 0 to arr_size - 1
+            LiquidityPool p = array.get(arr, i)
+            if p.active and not na(p.line_id)
+                line.set_x2(p.line_id, time)
+
+// Function to apply lifecycle decay and cleanup old elements
+f_apply_decay_and_cleanup(LiquidityPool[] arr) =>
+    int arr_size = array.size(arr)
+    if arr_size > 0
+        // 1. Apply time-based decay (lifespan of 72 hours = 259,200,000 ms)
+        float elapsed = na(time[1]) ? 0.0 : float(time - time[1])
+        float decay_amt = elapsed * 0.9 / 259200000.0
+        
+        for i = 0 to arr_size - 1
+            LiquidityPool p = array.get(arr, i)
+            if p.active
+                p.strength_score := p.strength_score - decay_amt
+                if p.strength_score < 0.1
+                    p.active := false
+                    if not na(p.line_id)
+                        line.set_color(p.line_id, color.new(color.gray, 80))
+                        line.set_style(p.line_id, line.style_dashed)
+                        
+        // 2. Cleanup to prevent memory growth (max 30 elements)
+        if arr_size > 30
+            int to_remove = arr_size - 30
+            for i = 1 to to_remove
+                LiquidityPool p = array.get(arr, 0)
+                if not na(p.line_id)
+                    line.delete(p.line_id)
+                array.remove(arr, 0)
+
+// Helper functions to scan the rolling landscape and find closest active liquidity targets
+f_find_closest_high(LiquidityPool[] arr1, LiquidityPool[] arr2, float pdh_val, bool pdh_active_val, float entry_price) =>
+    float closest_high = na
+    int size1 = array.size(arr1)
+    if size1 > 0
+        for i = 0 to size1 - 1
+            LiquidityPool p = array.get(arr1, i)
+            if p.active and p.price > entry_price
+                if na(closest_high) or p.price < closest_high
+                    closest_high := p.price
+    int size2 = array.size(arr2)
+    if size2 > 0
+        for i = 0 to size2 - 1
+            LiquidityPool p = array.get(arr2, i)
+            if p.active and p.price > entry_price
+                if na(closest_high) or p.price < closest_high
+                    closest_high := p.price
+    if pdh_active_val and not na(pdh_val) and pdh_val > entry_price
+        if na(closest_high) or pdh_val < closest_high
+            closest_high := pdh_val
+    closest_high
+
+f_find_closest_low(LiquidityPool[] arr1, LiquidityPool[] arr2, float pdl_val, bool pdl_active_val, float entry_price) =>
+    float closest_low = na
+    int size1 = array.size(arr1)
+    if size1 > 0
+        for i = 0 to size1 - 1
+            LiquidityPool p = array.get(arr1, i)
+            if p.active and p.price < entry_price
+                if na(closest_low) or p.price > closest_low
+                    closest_low := p.price
+    int size2 = array.size(arr2)
+    if size2 > 0
+        for i = 0 to size2 - 1
+            LiquidityPool p = array.get(arr2, i)
+            if p.active and p.price < entry_price
+                if na(closest_low) or p.price > closest_low
+                    closest_low := p.price
+    if pdl_active_val and not na(pdl_val) and pdl_val < entry_price
+        if na(closest_low) or pdl_val > closest_low
+            closest_low := pdl_val
+    closest_low
+
+// Helper functions removed (dead code)
+
+// User Defined Function (UDF) for requesting non-repainting HTF data
+f_get_htf_data(int a_len) =>
+    is_green_red = (close[1] > open[1]) and (close < open)
+    is_red_green = (close[1] < open[1]) and (close > open)
+
+    float pattern_high = is_green_red ? math.max(high[1], high) : na
+    int pattern_high_time = is_green_red ? (high > high[1] ? time : time[1]) : na
+
+    float pattern_low = is_red_green ? math.min(low[1], low) : na
+    int pattern_low_time = is_red_green ? (low < low[1] ? time : time[1]) : na
+
+    // Most recent 5 swing highs
+    ph0 = ta.valuewhen(is_green_red, pattern_high, 0)
+    ph1 = ta.valuewhen(is_green_red, pattern_high, 1)
+    ph2 = ta.valuewhen(is_green_red, pattern_high, 2)
+    ph3 = ta.valuewhen(is_green_red, pattern_high, 3)
+    ph4 = ta.valuewhen(is_green_red, pattern_high, 4)
+    
+    // Timestamps of most recent 5 swing highs
+    pht0 = ta.valuewhen(is_green_red, pattern_high_time, 0)
+    pht1 = ta.valuewhen(is_green_red, pattern_high_time, 1)
+    pht2 = ta.valuewhen(is_green_red, pattern_high_time, 2)
+    pht3 = ta.valuewhen(is_green_red, pattern_high_time, 3)
+    pht4 = ta.valuewhen(is_green_red, pattern_high_time, 4)
+    
+    // Most recent 5 swing lows
+    pl0 = ta.valuewhen(is_red_green, pattern_low, 0)
+    pl1 = ta.valuewhen(is_red_green, pattern_low, 1)
+    pl2 = ta.valuewhen(is_red_green, pattern_low, 2)
+    pl3 = ta.valuewhen(is_red_green, pattern_low, 3)
+    pl4 = ta.valuewhen(is_red_green, pattern_low, 4)
+    
+    // Timestamps of most recent 5 swing lows
+    plt0 = ta.valuewhen(is_red_green, pattern_low_time, 0)
+    plt1 = ta.valuewhen(is_red_green, pattern_low_time, 1)
+    plt2 = ta.valuewhen(is_red_green, pattern_low_time, 2)
+    plt3 = ta.valuewhen(is_red_green, pattern_low_time, 3)
+    plt4 = ta.valuewhen(is_red_green, pattern_low_time, 4)
+    
+    htf_atr = ta.atr(a_len)
+    
+    // Return raw series without the [1] double shift.
+    // request.security with lookahead_off will evaluate these at the last closed bar.
+    [ph0, ph1, ph2, ph3, ph4,
+     pht0, pht1, pht2, pht3, pht4,
+     pl0, pl1, pl2, pl3, pl4,
+     plt0, plt1, plt2, plt3, plt4,
+     htf_atr, close]
+
+// ==========================================
+// 3. MULTI-TIMEFRAME DATA FETCHING
+// ==========================================
+// Daily Session High/Low (PDH/PDL) - Non-repainting using lookahead_off and [1] offset
+pdh = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_off)
+pdl = request.security(syminfo.tickerid, "D", low[1], lookahead=barmerge.lookahead_off)
+
+// Chart Timeframe ATR (called globally on every bar for consistent calculations)
+chart_atr = ta.atr(atr_len)
+
+// 4H Timeframe Data Fetching
+[ph0_4h, ph1_4h, ph2_4h, ph3_4h, ph4_4h,
+ pht0_4h, pht1_4h, pht2_4h, pht3_4h, pht4_4h,
+ pl0_4h, pl1_4h, pl2_4h, pl3_4h, pl4_4h,
+ plt0_4h, plt1_4h, plt2_4h, plt3_4h, plt4_4h,
+ atr_4h, close_4h] = request.security(syminfo.tickerid, "240", f_get_htf_data(atr_len), lookahead=barmerge.lookahead_off)
+
+// 1H Timeframe Data Fetching
+[ph0_1h, ph1_1h, ph2_1h, ph3_1h, ph4_1h,
+ pht0_1h, pht1_1h, pht2_1h, pht3_1h, pht4_1h,
+ pl0_1h, pl1_1h, pl2_1h, pl3_1h, pl4_1h,
+ plt0_1h, plt1_1h, plt2_1h, plt3_1h, plt4_1h,
+ atr_1h, close_1h] = request.security(syminfo.tickerid, "60", f_get_htf_data(atr_len), lookahead=barmerge.lookahead_off)
+
+// ==========================================
+// 4. LEVEL MITIGATION & SWEEP EVENT TRACKER
+// ==========================================
+// Initialize persistent arrays for rolling liquidity landscape
+var active_highs_4h = array.new<LiquidityPool>()
+var active_lows_4h  = array.new<LiquidityPool>()
+var active_highs_1h = array.new<LiquidityPool>()
+var active_lows_1h  = array.new<LiquidityPool>()
+
+// Daily Session Levels Mitigation Tracking
+var bool pdh_breached = false
+var bool pdl_breached = false
+
+if nz(ta.change(time("D"))) != 0
+    pdh_breached := false
+    pdl_breached := false
+
+pdh_active = not pdh_breached
+pdh_sweep = false
+if pdh_active and not na(pdh)
+    if high >= pdh
+        pdh_breached := true
+        pdh_sweep := true
+
+pdl_active = not pdl_breached
+pdl_sweep = false
+if pdl_active and not na(pdl)
+    if low <= pdl
+        pdl_breached := true
+        pdl_sweep := true
+
+// Detect changes (new pivots) from HTF security fetches
+pht0_4h_changed = (not na(pht0_4h) and na(pht0_4h[1])) or (not na(pht0_4h) and pht0_4h != pht0_4h[1])
+plt0_4h_changed = (not na(plt0_4h) and na(plt0_4h[1])) or (not na(plt0_4h) and plt0_4h != plt0_4h[1])
+
+pht0_1h_changed = (not na(pht0_1h) and na(pht0_1h[1])) or (not na(pht0_1h) and pht0_1h != pht0_1h[1])
+plt0_1h_changed = (not na(plt0_1h) and na(plt0_1h[1])) or (not na(plt0_1h) and plt0_1h != plt0_1h[1])
+
+// Initial array population at first bar of chart
+var bool is_initialized = false
+if not is_initialized and not na(pht0_4h) and not na(pht0_1h)
+    if not na(ph0_4h)
+        f_add_liquidity_pool(active_highs_4h, ph0_4h, pht0_4h, atr_4h, true)
+    if not na(ph1_4h)
+        f_add_liquidity_pool(active_highs_4h, ph1_4h, pht1_4h, atr_4h, true)
+    if not na(ph2_4h)
+        f_add_liquidity_pool(active_highs_4h, ph2_4h, pht2_4h, atr_4h, true)
+    if not na(ph3_4h)
+        f_add_liquidity_pool(active_highs_4h, ph3_4h, pht3_4h, atr_4h, true)
+    if not na(ph4_4h)
+        f_add_liquidity_pool(active_highs_4h, ph4_4h, pht4_4h, atr_4h, true)
+        
+    if not na(pl0_4h)
+        f_add_liquidity_pool(active_lows_4h, pl0_4h, plt0_4h, atr_4h, false)
+    if not na(pl1_4h)
+        f_add_liquidity_pool(active_lows_4h, pl1_4h, plt1_4h, atr_4h, false)
+    if not na(pl2_4h)
+        f_add_liquidity_pool(active_lows_4h, pl2_4h, plt2_4h, atr_4h, false)
+    if not na(pl3_4h)
+        f_add_liquidity_pool(active_lows_4h, pl3_4h, plt3_4h, atr_4h, false)
+    if not na(pl4_4h)
+        f_add_liquidity_pool(active_lows_4h, pl4_4h, plt4_4h, atr_4h, false)
+        
+    if not na(ph0_1h)
+        f_add_liquidity_pool(active_highs_1h, ph0_1h, pht0_1h, atr_1h, true)
+    if not na(ph1_1h)
+        f_add_liquidity_pool(active_highs_1h, ph1_1h, pht1_1h, atr_1h, true)
+    if not na(ph2_1h)
+        f_add_liquidity_pool(active_highs_1h, ph2_1h, pht2_1h, atr_1h, true)
+    if not na(ph3_1h)
+        f_add_liquidity_pool(active_highs_1h, ph3_1h, pht3_1h, atr_1h, true)
+    if not na(ph4_1h)
+        f_add_liquidity_pool(active_highs_1h, ph4_1h, pht4_1h, atr_1h, true)
+        
+    if not na(pl0_1h)
+        f_add_liquidity_pool(active_lows_1h, pl0_1h, plt0_1h, atr_1h, false)
+    if not na(pl1_1h)
+        f_add_liquidity_pool(active_lows_1h, pl1_1h, plt1_1h, atr_1h, false)
+    if not na(pl2_1h)
+        f_add_liquidity_pool(active_lows_1h, pl2_1h, plt2_1h, atr_1h, false)
+    if not na(pl3_1h)
+        f_add_liquidity_pool(active_lows_1h, pl3_1h, plt3_1h, atr_1h, false)
+    if not na(pl4_1h)
+        f_add_liquidity_pool(active_lows_1h, pl4_1h, plt4_1h, atr_1h, false)
+    is_initialized := true
+
+// Add new pivots if confirmed and after initialization has run
+if is_initialized
+    if pht0_4h_changed and (not na(pht0_4h[1]))
+        f_add_liquidity_pool(active_highs_4h, ph0_4h, pht0_4h, atr_4h, true)
+    if plt0_4h_changed and (not na(plt0_4h[1]))
+        f_add_liquidity_pool(active_lows_4h, pl0_4h, plt0_4h, atr_4h, false)
+    
+    if pht0_1h_changed and (not na(pht0_1h[1]))
+        f_add_liquidity_pool(active_highs_1h, ph0_1h, pht0_1h, atr_1h, true)
+    if plt0_1h_changed and (not na(plt0_1h[1]))
+        f_add_liquidity_pool(active_lows_1h, pl0_1h, plt0_1h, atr_1h, false)
+
+// Update mitigations (close breach check using timeframe-specific closes)
+f_update_mitigations(active_highs_4h, true, close_4h)
+f_update_mitigations(active_lows_4h, false, close_4h)
+f_update_mitigations(active_highs_1h, true, close_1h)
+f_update_mitigations(active_lows_1h, false, close_1h)
+
+// Check for sweeps on current bar
+[sw_4h_high, str_4h_high] = f_check_sweep(active_highs_4h, true)
+[sw_4h_low, str_4h_low] = f_check_sweep(active_lows_4h, false)
+[sw_1h_high, str_1h_high] = f_check_sweep(active_highs_1h, true)
+[sw_1h_low, str_1h_low] = f_check_sweep(active_lows_1h, false)
+
+// Extend active lines to the current bar for visualization
+f_extend_active_lines(active_highs_4h)
+f_extend_active_lines(active_lows_4h)
+f_extend_active_lines(active_highs_1h)
+f_extend_active_lines(active_lows_1h)
+
+// Apply decay and cleanup to active arrays
+f_apply_decay_and_cleanup(active_highs_4h)
+f_apply_decay_and_cleanup(active_lows_4h)
+f_apply_decay_and_cleanup(active_highs_1h)
+f_apply_decay_and_cleanup(active_lows_1h)
+
+// ==========================================
+// 4.5. UDF FOR 1m AND 5m STRUCTURE DETECTIONS
+// ==========================================
+f_get_structure_signals() =>
+    // BOS Tracking
+    var float last_ph = na
+    var float last_pl = na
+    ph = ta.pivothigh(high, 2, 2)
+    pl = ta.pivotlow(low, 2, 2)
+    if not na(ph)
+        last_ph := ph
+    if not na(pl)
+        last_pl := pl
+        
+    bool bos_up = not na(last_ph) and close > last_ph
+    bool bos_down = not na(last_pl) and close < last_pl
+    
+    if bos_up
+        last_ph := na
+    if bos_down
+        last_pl := na
+        
+    var int bos_up_time = 0
+    var int bos_down_time = 0
+    if bos_up
+        bos_up_time := time
+    if bos_down
+        bos_down_time := time
+        
+    // FVG Tracking (Most recent FVG zone)
+    var float fvg_bull_top = na
+    var float fvg_bull_bottom = na
+    var bool fvg_bull_revisited = false
+    var float fvg_bear_top = na
+    var float fvg_bear_bottom = na
+    var bool fvg_bear_revisited = false
+    
+    // Check FVG Creation
+    if low > high[2]
+        fvg_bull_top := low
+        fvg_bull_bottom := high[2]
+        fvg_bull_revisited := false
+    if high < low[2]
+        fvg_bear_top := low[2]
+        fvg_bear_bottom := high
+        fvg_bear_revisited := false
+        
+    bool fvg_bull_rej = false
+    bool fvg_bear_rej = false
+    bool fvg_bull_inv = false
+    bool fvg_bear_inv = false
+    
+    float r_fvg_bull_top = na
+    float r_fvg_bull_bottom = na
+    float r_fvg_bear_top = na
+    float r_fvg_bear_bottom = na
+    
+    if not na(fvg_bull_top)
+        if low < fvg_bull_top
+            fvg_bull_revisited := true
+        if fvg_bull_revisited and close > fvg_bull_top and low > fvg_bull_bottom
+            fvg_bull_rej := true
+            r_fvg_bull_top := fvg_bull_top
+            r_fvg_bull_bottom := fvg_bull_bottom
+            fvg_bull_top := na
+            fvg_bull_bottom := na
+            fvg_bull_revisited := false
+        else if low <= fvg_bull_bottom
+            fvg_bull_inv := true
+            fvg_bull_top := na
+            fvg_bull_bottom := na
+            fvg_bull_revisited := false
+            
+    if not na(fvg_bear_bottom)
+        if high > fvg_bear_bottom
+            fvg_bear_revisited := true
+        if fvg_bear_revisited and close < fvg_bear_bottom and high < fvg_bear_top
+            fvg_bear_rej := true
+            r_fvg_bear_top := fvg_bear_top
+            r_fvg_bear_bottom := fvg_bear_bottom
+            fvg_bear_top := na
+            fvg_bear_bottom := na
+            fvg_bear_revisited := false
+        else if high >= fvg_bear_top
+            fvg_bear_inv := true
+            fvg_bear_top := na
+            fvg_bear_bottom := na
+            fvg_bear_revisited := false
+            
+    var float last_fvg_bull_top = na
+    var float last_fvg_bull_bottom = na
+    var float last_fvg_bear_top = na
+    var float last_fvg_bear_bottom = na
+    
+    var int last_fvg_bull_time = 0
+    var int last_fvg_bear_time = 0
+    var int last_fvg_bull_inv_time = 0
+    var int last_fvg_bear_inv_time = 0
+    
+    if fvg_bull_rej
+        last_fvg_bull_top := r_fvg_bull_top
+        last_fvg_bull_bottom := r_fvg_bull_bottom
+        last_fvg_bull_time := time
+    if fvg_bear_rej
+        last_fvg_bear_top := r_fvg_bear_top
+        last_fvg_bear_bottom := r_fvg_bear_bottom
+        last_fvg_bear_time := time
+        
+    if fvg_bull_inv
+        last_fvg_bull_inv_time := time
+    if fvg_bear_inv
+        last_fvg_bear_inv_time := time
+        
+    [bos_up ? 1.0 : 0.0, float(bos_up_time), bos_down ? 1.0 : 0.0, float(bos_down_time),
+     fvg_bull_rej ? 1.0 : 0.0, float(last_fvg_bull_time), last_fvg_bull_top, last_fvg_bull_bottom,
+     fvg_bear_rej ? 1.0 : 0.0, float(last_fvg_bear_time), last_fvg_bear_top, last_fvg_bear_bottom,
+     fvg_bull_inv ? 1.0 : 0.0, float(last_fvg_bull_inv_time), fvg_bear_inv ? 1.0 : 0.0, float(last_fvg_bear_inv_time)]
+
+// Fetch Structure Signals on 1m and 5m timeframes
+[bos_up_1m, bos_up_time_1m, bos_down_1m, bos_down_time_1m,
+ fvg_bull_1m, fvg_bull_time_1m, fvg_bull_top_1m, fvg_bull_bottom_1m,
+ fvg_bear_1m, fvg_bear_time_1m, fvg_bear_top_1m, fvg_bear_bottom_1m,
+ fvg_bull_inv_1m, fvg_bull_inv_time_1m, fvg_bear_inv_1m, fvg_bear_inv_time_1m] = request.security(syminfo.tickerid, "1", f_get_structure_signals(), lookahead=barmerge.lookahead_off)
+
+[bos_up_5m, bos_up_time_5m, bos_down_5m, bos_down_time_5m,
+ fvg_bull_5m, fvg_bull_time_5m, fvg_bull_top_5m, fvg_bull_bottom_5m,
+ fvg_bear_5m, fvg_bear_time_5m, fvg_bear_top_5m, fvg_bear_bottom_5m,
+ fvg_bull_inv_5m, fvg_bull_inv_time_5m, fvg_bear_inv_5m, fvg_bear_inv_time_5m] = request.security(syminfo.tickerid, "5", f_get_structure_signals(), lookahead=barmerge.lookahead_off)
+
+// ==========================================
+// 5. SWEEP EVENT FILTERS (HARD GATE ON PDH/PDL OR ACTIVE ROLLING LIQUIDITY)
+// ==========================================
+sweep_buy_side  = (pdh_sweep or sw_4h_high or sw_1h_high) ? 1 : 0
+sweep_sell_side = (pdl_sweep or sw_4h_low or sw_1h_low) ? 1 : 0
+
+// ==========================================
+// 6. TIMING & SESSION FEATURES
+// ==========================================
+ny_session     = not na(time(timeframe.period, session_ny, "America/New_York")) ? 1 : 0
+london_session = not na(time(timeframe.period, session_london, "America/New_York")) ? 1 : 0
+asian_session  = not na(time(timeframe.period, session_asian, "America/New_York")) ? 1 : 0
+
+// ==========================================
+// ==========================================
+// 7. DIRECTIONAL STATE MACHINE & STRICT CONFIRMATION
+// ==========================================
+// State persistent variables
+var int state = 0
+var int sweep_dir = 0
+var int valid_setup = 0
+var float sweep_extreme = na
+var float current_extreme = na
+
+// State-associated metadata (tracked on sweep)
+var int sweep_time = na
+var int sweep_bar_index = na
+var int liquidity_type = 0
+var float liquidity_strength = 0.0
+
+// Persistent validation variables for 1m and 5m timeframes
+var string setup_origin_tf = ""
+var int setup_origin_bar_index = na
+
+// Persistent visualization variables for Equilibrium dealing range
+var box active_eq_box = na
+var line active_eq_line = na
+
+// Trade tracking state variables
+var bool trade_active = false
+var int trade_dir = 0
+var float trade_sl = na
+var float trade_tp = na
+var int setups_in_current_sweep = 0
+
+var line trade_tp_line = na
+var line trade_sl_line = na
+
+// Persistent independent confirmations tracking
+var bool active_setup_1m_bull = false
+var bool active_setup_1m_bear = false
+var bool active_setup_5m_bull = false
+var bool active_setup_5m_bear = false
+
+var int setup_origin_bar_index_1m_bull = na
+var int setup_origin_bar_index_1m_bear = na
+var int setup_origin_bar_index_5m_bull = na
+var int setup_origin_bar_index_5m_bear = na
+
+var string setup_reason_1m_bull = ""
+var string setup_reason_1m_bear = ""
+var string setup_reason_5m_bull = ""
+var string setup_reason_5m_bear = ""
+
+// New Dual-Gate Confirmation Variables
+var bool reversal_confirmed = false
+var bool continuation_confirmed = false
+var bool bos_occurred = false
+var bool fvg_occurred = false
+var string reversal_tf = ""
+var string continuation_tf = ""
+
+// Define raw confirmation event checks (decoupled from state machine/active sweep)
+bool bos_up_1m_event = (not na(bos_up_time_1m) and (na(bos_up_time_1m[1]) or bos_up_time_1m != bos_up_time_1m[1]))
+bool bos_down_1m_event = (not na(bos_down_time_1m) and (na(bos_down_time_1m[1]) or bos_down_time_1m != bos_down_time_1m[1]))
+bool fvg_bull_1m_event = (not na(fvg_bull_time_1m) and (na(fvg_bull_time_1m[1]) or fvg_bull_time_1m != fvg_bull_time_1m[1]))
+bool fvg_bear_1m_event = (not na(fvg_bear_time_1m) and (na(fvg_bear_time_1m[1]) or fvg_bear_time_1m != fvg_bear_time_1m[1]))
+bool fvg_bull_inv_1m_event = (not na(fvg_bull_inv_time_1m) and (na(fvg_bull_inv_time_1m[1]) or fvg_bull_inv_time_1m != fvg_bull_inv_time_1m[1]))
+bool fvg_bear_inv_1m_event = (not na(fvg_bear_inv_time_1m) and (na(fvg_bear_inv_time_1m[1]) or fvg_bear_inv_time_1m != fvg_bear_inv_time_1m[1]))
+
+bool bos_up_5m_event = (not na(bos_up_time_5m) and (na(bos_up_time_5m[1]) or bos_up_time_5m != bos_up_time_5m[1]))
+bool bos_down_5m_event = (not na(bos_down_time_5m) and (na(bos_down_time_5m[1]) or bos_down_time_5m != bos_down_time_5m[1]))
+bool fvg_bull_5m_event = (not na(fvg_bull_time_5m) and (na(fvg_bull_time_5m[1]) or fvg_bull_time_5m != fvg_bull_time_5m[1]))
+bool fvg_bear_5m_event = (not na(fvg_bear_time_5m) and (na(fvg_bear_time_5m[1]) or fvg_bear_time_5m != fvg_bear_time_5m[1]))
+bool fvg_bull_inv_5m_event = (not na(fvg_bull_inv_time_5m) and (na(fvg_bull_inv_time_5m[1]) or fvg_bull_inv_time_5m != fvg_bull_inv_time_5m[1]))
+bool fvg_bear_inv_5m_event = (not na(fvg_bear_inv_time_5m) and (na(fvg_bear_inv_time_5m[1]) or fvg_bear_inv_time_5m != fvg_bear_inv_time_5m[1]))
+
+// Update Bullish 1m Setup
+if bos_up_1m_event or fvg_bull_1m_event
+    active_setup_1m_bull := true
+    setup_origin_bar_index_1m_bull := bar_index
+    setup_reason_1m_bull := (bos_up_1m_event and fvg_bull_1m_event) ? "BOS+FVG" : (bos_up_1m_event ? "BOS" : "FVG")
+if bos_down_1m_event or fvg_bear_1m_event
+    active_setup_1m_bull := false
+    setup_origin_bar_index_1m_bull := na
+    setup_reason_1m_bull := ""
+
+// Update Bearish 1m Setup
+if bos_down_1m_event or fvg_bear_1m_event
+    active_setup_1m_bear := true
+    setup_origin_bar_index_1m_bear := bar_index
+    setup_reason_1m_bear := (bos_down_1m_event and fvg_bear_1m_event) ? "BOS+FVG" : (bos_down_1m_event ? "BOS" : "FVG")
+if bos_up_1m_event or fvg_bull_1m_event
+    active_setup_1m_bear := false
+    setup_origin_bar_index_1m_bear := na
+    setup_reason_1m_bear := ""
+
+// Update Bullish 5m Setup
+if bos_up_5m_event or fvg_bull_5m_event
+    active_setup_5m_bull := true
+    setup_origin_bar_index_5m_bull := bar_index
+    setup_reason_5m_bull := (bos_up_5m_event and fvg_bull_5m_event) ? "BOS+FVG" : (bos_up_5m_event ? "BOS" : "FVG")
+if bos_down_5m_event or fvg_bear_5m_event
+    active_setup_5m_bull := false
+    setup_origin_bar_index_5m_bull := na
+    setup_reason_5m_bull := ""
+
+// Update Bearish 5m Setup
+if bos_down_5m_event or fvg_bear_5m_event
+    active_setup_5m_bear := true
+    setup_origin_bar_index_5m_bear := bar_index
+    setup_reason_5m_bear := (bos_down_5m_event and fvg_bear_5m_event) ? "BOS+FVG" : (bos_down_5m_event ? "BOS" : "FVG")
+if bos_up_5m_event or fvg_bull_5m_event
+    active_setup_5m_bear := false
+    setup_origin_bar_index_5m_bear := na
+    setup_reason_5m_bear := ""
+
+// Track target price labels on TP/SL lines
+var label trade_tp_label = na
+var label trade_sl_label = na
+var string setup_reason = ""
+var string setup_reason_output = ""
+
+prev_valid_setup = valid_setup
+
+invalidation_triggered = false
+
+// Trade Tracking & Resolution Logic
+if trade_active
+    bool sl_hit = false
+    bool tp_hit = false
+    
+    if trade_dir == 1 // Long
+        if low <= trade_sl
+            sl_hit := true
+        else if high >= trade_tp
+            tp_hit := true
+    else if trade_dir == -1 // Short
+        if high >= trade_sl
+            sl_hit := true
+        else if low <= trade_tp
+            tp_hit := true
+            
+    if sl_hit or tp_hit
+        if show_debug
+            // Extend the lines and labels to the current resolution bar
+            if not na(trade_sl_line)
+                line.set_x2(trade_sl_line, time)
+            if not na(trade_tp_line)
+                line.set_x2(trade_tp_line, time)
+            if not na(trade_sl_label)
+                label.set_x(trade_sl_label, time)
+            if not na(trade_tp_label)
+                label.set_x(trade_tp_label, time)
+
+            if sl_hit
+                // Keep Stop Loss line solid and in original color
+                if not na(trade_sl_line)
+                    line.set_style(trade_sl_line, line.style_solid)
+                    line.set_color(trade_sl_line, trade_dir == 1 ? color.new(color.red, 20) : color.new(color.green, 20))
+                
+                // Keep trade_sl_label in original color and change text to 'SL Hit: [price]'
+                if not na(trade_sl_label)
+                    label.set_color(trade_sl_label, trade_dir == 1 ? color.red : color.green)
+                    label.set_textcolor(trade_sl_label, color.white)
+                    label.set_text(trade_sl_label, "SL Hit: " + str.tostring(trade_sl, "#.##"))
+                
+                // Style cancelled TP line as dashed gray
+                if not na(trade_tp_line)
+                    line.set_style(trade_tp_line, line.style_dashed)
+                    line.set_color(trade_tp_line, color.new(color.gray, 70))
+                
+                // Style cancelled trade_tp_label as gray and change text to 'TP Cancelled: [price]'
+                if not na(trade_tp_label)
+                    label.set_color(trade_tp_label, color.new(color.gray, 70))
+                    label.set_textcolor(trade_tp_label, color.new(color.white, 40))
+                    label.set_text(trade_tp_label, "TP Cancelled: " + str.tostring(trade_tp, "#.##"))
+            
+            else if tp_hit
+                // Keep Take Profit line solid and in original color
+                if not na(trade_tp_line)
+                    line.set_style(trade_tp_line, line.style_solid)
+                    line.set_color(trade_tp_line, trade_dir == 1 ? color.new(color.green, 20) : color.new(color.red, 20))
+                
+                // Keep trade_tp_label in original color and change text to 'TP Hit: [price]'
+                if not na(trade_tp_label)
+                    label.set_color(trade_tp_label, trade_dir == 1 ? color.green : color.red)
+                    label.set_textcolor(trade_tp_label, color.white)
+                    label.set_text(trade_tp_label, "TP Hit: " + str.tostring(trade_tp, "#.##"))
+                
+                // Style cancelled SL line as dashed gray
+                if not na(trade_sl_line)
+                    line.set_style(trade_sl_line, line.style_dashed)
+                    line.set_color(trade_sl_line, color.new(color.gray, 70))
+                
+                // Style cancelled trade_sl_label as gray and change text to 'SL Cancelled: [price]'
+                if not na(trade_sl_label)
+                    label.set_color(trade_sl_label, color.new(color.gray, 70))
+                    label.set_textcolor(trade_sl_label, color.new(color.white, 40))
+                    label.set_text(trade_sl_label, "SL Cancelled: " + str.tostring(trade_sl, "#.##"))
+            
+            // Draw trade resolution label (SL Hit / TP Hit)
+            label.new(x=bar_index, y=na, text=sl_hit ? "SL Hit" : "TP Hit", yloc=trade_dir == 1 ? (sl_hit ? yloc.belowbar : yloc.abovebar) : (sl_hit ? yloc.abovebar : yloc.belowbar), style=trade_dir == 1 ? (sl_hit ? label.style_label_up : label.style_label_down) : (sl_hit ? label.style_label_down : label.style_label_up), color=sl_hit ? color.gray : color.orange, textcolor=color.white, size=size.tiny)
+        
+                trade_active := false
+        trade_sl := na
+        trade_tp := na
+        trade_dir := 0
+        trade_tp_label := na
+        trade_sl_label := na
+        trade_tp_line := na
+        trade_sl_line := na
+        
+        // POST-TRADE BIAS RESET & RETROSPECTIVE ANALYSIS PASS
+        state := 0
+        sweep_dir := 0
+        valid_setup := 0
+        sweep_time := na
+        sweep_extreme := na
+        current_extreme := na
+        sweep_bar_index := na
+        liquidity_type := 0
+        liquidity_strength := 0.0
+        setup_origin_tf := ""
+        setup_origin_bar_index := na
+        setup_reason := ""
+        setup_reason_output := ""
+        reversal_confirmed := false
+        continuation_confirmed := false
+        bos_occurred := false
+        fvg_occurred := false
+        reversal_tf := ""
+        continuation_tf := ""
+        
+        // Format equilibrium visual indicators as inactive (gray/dashed)
+        if show_debug
+            if not na(active_eq_box)
+                box.set_border_color(active_eq_box, color.new(color.gray, 80))
+                box.set_bgcolor(active_eq_box, color.new(color.gray, 98))
+            if not na(active_eq_line)
+                line.set_color(active_eq_line, color.new(color.gray, 80))
+                line.set_style(active_eq_line, line.style_dashed)
+        active_eq_box := na
+        active_eq_line := na
+        
+        // Retrospective search loop
+        int found_sweep_offset = -1
+        int found_sweep_dir = 0
+        float found_sweep_extreme = na
+        int found_sweep_time = na
+        int found_sweep_bar_index = na
+        int found_l_type = 0
+        float found_l_strength = 0.0
+        
+        for i = 0 to lookback_bars - 1
+            bool is_high_sweep = (pdh_sweep[i] or sw_4h_high[i] or sw_1h_high[i])
+            bool is_low_sweep = (pdl_sweep[i] or sw_4h_low[i] or sw_1h_low[i])
+            
+            if is_high_sweep or is_low_sweep
+                int s_dir = is_high_sweep ? -1 : 1
+                float s_extreme = is_high_sweep ? high[i] : low[i]
+                bool invalidated = false
+                
+                if i > 0
+                    for j = 0 to i - 1
+                        if s_dir == -1
+                            if high[j] > s_extreme
+                                invalidated := true
+                                break
+                        else
+                            if low[j] < s_extreme
+                                invalidated := true
+                                break
+                                
+                if not invalidated
+                    found_sweep_offset := i
+                    found_sweep_dir := s_dir
+                    found_sweep_extreme := s_extreme
+                    found_sweep_time := time[i]
+                    found_sweep_bar_index := bar_index[i]
+                    
+                    if is_high_sweep
+                        if sw_4h_high[i]
+                            found_l_type := 3
+                            found_l_strength := str_4h_high[i]
+                        else if sw_1h_high[i]
+                            found_l_type := 2
+                            found_l_strength := str_1h_high[i]
+                        else
+                            found_l_type := 1
+                            found_l_strength := 1.0
+                    else
+                        if sw_4h_low[i]
+                            found_l_type := 3
+                            found_l_strength := str_4h_low[i]
+                        else if sw_1h_low[i]
+                            found_l_type := 2
+                            found_l_strength := str_1h_low[i]
+                        else
+                            found_l_type := 1
+                            found_l_strength := 1.0
+                    break
+                    
+        if found_sweep_offset != -1
+            state := 2
+            sweep_dir := found_sweep_dir
+            sweep_extreme := found_sweep_extreme
+            sweep_time := found_sweep_time
+            sweep_bar_index := found_sweep_bar_index
+            liquidity_type := found_l_type
+            liquidity_strength := found_l_strength
+            
+            reversal_confirmed := false
+            continuation_confirmed := false
+            bos_occurred := false
+            fvg_occurred := false
+            reversal_tf := ""
+            continuation_tf := ""
+            
+            // Reconstruct current_extreme and confluences chronologically
+            float extreme_val = found_sweep_dir == 1 ? high[found_sweep_offset] : low[found_sweep_offset]
+            for k = 0 to found_sweep_offset
+                int idx = found_sweep_offset - k
+                if found_sweep_dir == 1
+                    extreme_val := math.max(extreme_val, high[idx])
+                else
+                    extreme_val := math.min(extreme_val, low[idx])
+                current_extreme := extreme_val
+                
+                float eq_val = (found_sweep_extreme + current_extreme) / 2.0
+                
+                if found_sweep_dir == 1 // Bullish
+                    bool bos_event = (bos_up_1m_event[idx] or bos_up_5m_event[idx])
+                    bool inv_event = (fvg_bear_inv_1m_event[idx] or fvg_bear_inv_5m_event[idx])
+                    bool fill_event = (fvg_bull_1m_event[idx] or fvg_bull_5m_event[idx])
+                    bool eq_touch = (low[idx] <= eq_val)
+                    
+                    if bos_event or inv_event
+                        reversal_confirmed := true
+                    if bos_event
+                        bos_occurred := true
+                    if inv_event
+                        fvg_occurred := true
+                        
+                    if fill_event or eq_touch
+                        continuation_confirmed := true
+                    if fill_event
+                        fvg_occurred := true
+                        
+                    if bos_up_1m_event[idx] or fvg_bear_inv_1m_event[idx]
+                        reversal_tf := "1m"
+                    else if bos_up_5m_event[idx] or fvg_bear_inv_5m_event[idx]
+                        if reversal_tf != "1m"
+                            reversal_tf := "5m"
+                    if fvg_bull_1m_event[idx] or eq_touch
+                        continuation_tf := "1m"
+                    else if fvg_bull_5m_event[idx]
+                        if continuation_tf != "1m"
+                            continuation_tf := "5m"
+                else // Bearish
+                    bool bos_event = (bos_down_1m_event[idx] or bos_down_5m_event[idx])
+                    bool inv_event = (fvg_bull_inv_1m_event[idx] or fvg_bull_inv_5m_event[idx])
+                    bool fill_event = (fvg_bear_1m_event[idx] or fvg_bear_5m_event[idx])
+                    bool eq_touch = (high[idx] >= eq_val)
+                    
+                    if bos_event or inv_event
+                        reversal_confirmed := true
+                    if bos_event
+                        bos_occurred := true
+                    if inv_event
+                        fvg_occurred := true
+                        
+                    if fill_event or eq_touch
+                        continuation_confirmed := true
+                    if fill_event
+                        fvg_occurred := true
+                        
+                    if bos_down_1m_event[idx] or fvg_bull_inv_1m_event[idx]
+                        reversal_tf := "1m"
+                    else if bos_down_5m_event[idx] or fvg_bull_inv_5m_event[idx]
+                        if reversal_tf != "1m"
+                            reversal_tf := "5m"
+                    if fvg_bear_1m_event[idx] or eq_touch
+                        continuation_tf := "1m"
+                    else if fvg_bear_5m_event[idx]
+                        if continuation_tf != "1m"
+                            continuation_tf := "5m"
+    else
+        if show_debug
+            if not na(trade_sl_line)
+                line.set_x2(trade_sl_line, time)
+            if not na(trade_tp_line)
+                line.set_x2(trade_tp_line, time)
+            
+            // Update active TP/SL price labels positions
+            if not na(trade_tp_label)
+                label.set_x(trade_tp_label, time)
+            if not na(trade_sl_label)
+                label.set_x(trade_sl_label, time)
+
+// Determine liquidity details for active sweep
+int l_type = 0
+float l_strength = 0.0
+
+if (sweep_buy_side == 1 or sweep_sell_side == 1)
+    if (sw_4h_high or sw_4h_low)
+        l_type := 3
+        l_strength := sw_4h_high ? str_4h_high : str_4h_low
+    else if (sw_1h_high or sw_1h_low)
+        l_type := 2
+        l_strength := sw_1h_high ? str_1h_high : str_1h_low
+    else if (pdh_sweep or pdl_sweep)
+        l_type := 1
+        l_strength := 1.0
+
+// Transition to State 2 on confirmed sweep (immediate search activation)
+bool is_new_sweep_event = false
+int new_sweep_dir = sweep_buy_side == 1 ? -1 : 1
+bool is_new_sweep = (sweep_buy_side == 1 or sweep_sell_side == 1) and (state == 0 or (state == 2 and new_sweep_dir != sweep_dir))
+
+if is_new_sweep
+    is_new_sweep_event := true
+    state := 2
+    valid_setup := 0
+    sweep_time := time
+    sweep_bar_index := bar_index
+    liquidity_type := l_type
+    liquidity_strength := l_strength
+    setup_origin_tf := ""
+    setup_origin_bar_index := na
+    if sweep_buy_side == 1
+        sweep_dir := -1
+        sweep_extreme := high
+        current_extreme := low
+    else
+        sweep_dir := 1
+        sweep_extreme := low
+        current_extreme := high
+        
+    setups_in_current_sweep := 0
+    trade_active := false
+    trade_sl := na
+    trade_tp := na
+    trade_dir := 0
+    trade_sl_line := na
+    trade_tp_line := na
+        
+    // Create new equilibrium box and midpoint line if debug is enabled
+    if show_debug
+        color box_color = sweep_dir == 1 ? color.new(color.green, 96) : color.new(color.red, 96)
+        active_eq_box := box.new(left=sweep_bar_index, top=math.max(sweep_extreme, current_extreme), right=bar_index, bottom=math.min(sweep_extreme, current_extreme), bgcolor=box_color, border_color=color.new(color.purple, 80), border_style=line.style_solid)
+        active_eq_line := line.new(x1=sweep_bar_index, y1=(sweep_extreme + current_extreme) / 2.0, x2=bar_index, y2=(sweep_extreme + current_extreme) / 2.0, xloc=xloc.bar_index, color=color.purple, width=1)
+
+// Reversal logic gates
+bool bos_confirmed = false
+bool fvg_confirmed = false
+
+if state == 2
+    // Update extremes of dealing range
+    if sweep_dir == -1
+        current_extreme := math.min(nz(current_extreme, low), low)
+    else
+        current_extreme := math.max(nz(current_extreme, high), high)
+        
+    // Check for invalidation (stop loss breach)
+    if sweep_dir == -1
+        if high > sweep_extreme
+            if valid_setup == 0
+                sweep_extreme := high
+                sweep_bar_index := bar_index
+            else
+                invalidation_triggered := true
+    else if sweep_dir == 1
+        if low < sweep_extreme
+            if valid_setup == 0
+                sweep_extreme := low
+                sweep_bar_index := bar_index
+            else
+                invalidation_triggered := true
+            
+    if invalidation_triggered and valid_setup == 1
+        state := 0
+        sweep_dir := 0
+        valid_setup := 0
+        sweep_time := na
+        sweep_extreme := na
+        current_extreme := na
+        sweep_bar_index := na
+        liquidity_type := 0
+        liquidity_strength := 0.0
+        setup_origin_tf := ""
+        setup_origin_bar_index := na
+        
+        // Format equilibrium visual indicators as inactive (gray/dashed)
+        if show_debug
+            if not na(active_eq_box)
+                box.set_border_color(active_eq_box, color.new(color.gray, 80))
+                box.set_bgcolor(active_eq_box, color.new(color.gray, 98))
+            if not na(active_eq_line)
+                line.set_color(active_eq_line, color.new(color.gray, 80))
+                line.set_style(active_eq_line, line.style_dashed)
+        active_eq_box := na
+        active_eq_line := na
+    else
+        // Fallback creation if show_debug is true but active_eq_box/active_eq_line is na
+        if show_debug and na(active_eq_box) and not na(sweep_bar_index)
+            color box_color = sweep_dir == 1 ? color.new(color.green, 96) : color.new(color.red, 96)
+            active_eq_box := box.new(left=sweep_bar_index, top=math.max(sweep_extreme, current_extreme), right=bar_index, bottom=math.min(sweep_extreme, current_extreme), bgcolor=box_color, border_color=color.new(color.purple, 80), border_style=line.style_solid)
+            active_eq_line := line.new(x1=sweep_bar_index, y1=(sweep_extreme + current_extreme) / 2.0, x2=bar_index, y2=(sweep_extreme + current_extreme) / 2.0, xloc=xloc.bar_index, color=color.purple, width=1)
+
+        // Update equilibrium visual indicators as dealing range expands
+        if show_debug and not na(active_eq_box) and not na(active_eq_line)
+            box.set_left(active_eq_box, sweep_bar_index)
+            box.set_top(active_eq_box, math.max(sweep_extreme, current_extreme))
+            box.set_bottom(active_eq_box, math.min(sweep_extreme, current_extreme))
+            box.set_right(active_eq_box, bar_index)
+            
+            float eq_val = (sweep_extreme + current_extreme) / 2.0
+            line.set_x1(active_eq_line, sweep_bar_index)
+            line.set_y1(active_eq_line, eq_val)
+            line.set_y2(active_eq_line, eq_val)
+            line.set_x2(active_eq_line, bar_index)
+
+        // Update confluences on current bar
+        if sweep_dir == 1 // Bullish setup (swept low)
+            bool bos_event = (bos_up_1m_event or bos_up_5m_event)
+            bool inv_event = (fvg_bear_inv_1m_event or fvg_bear_inv_5m_event)
+            bool fill_event = (fvg_bull_1m_event or fvg_bull_5m_event)
+            bool eq_touch = (low <= (sweep_extreme + current_extreme) / 2.0)
+            
+            if bos_event or inv_event
+                reversal_confirmed := true
+            if bos_event
+                bos_occurred := true
+            if inv_event
+                fvg_occurred := true
+                
+            if fill_event or eq_touch
+                continuation_confirmed := true
+            if fill_event
+                fvg_occurred := true
+                
+            // Track timeframe
+            if bos_up_1m_event or fvg_bear_inv_1m_event
+                reversal_tf := "1m"
+            else if bos_up_5m_event or fvg_bear_inv_5m_event
+                if reversal_tf != "1m"
+                    reversal_tf := "5m"
+            if fvg_bull_1m_event or eq_touch
+                continuation_tf := "1m"
+            else if fvg_bull_5m_event
+                if continuation_tf != "1m"
+                    continuation_tf := "5m"
+        else // Bearish setup (swept high)
+            bool bos_event = (bos_down_1m_event or bos_down_5m_event)
+            bool inv_event = (fvg_bull_inv_1m_event or fvg_bull_inv_5m_event)
+            bool fill_event = (fvg_bear_1m_event or fvg_bear_5m_event)
+            bool eq_touch = (high >= (sweep_extreme + current_extreme) / 2.0)
+            
+            if bos_event or inv_event
+                reversal_confirmed := true
+            if bos_event
+                bos_occurred := true
+            if inv_event
+                fvg_occurred := true
+                
+            if fill_event or eq_touch
+                continuation_confirmed := true
+            if fill_event
+                fvg_occurred := true
+                
+            // Track timeframe
+            if bos_down_1m_event or fvg_bull_inv_1m_event
+                reversal_tf := "1m"
+            else if bos_down_5m_event or fvg_bull_inv_5m_event
+                if reversal_tf != "1m"
+                    reversal_tf := "5m"
+            if fvg_bear_1m_event or eq_touch
+                continuation_tf := "1m"
+            else if fvg_bear_5m_event
+                if continuation_tf != "1m"
+                    continuation_tf := "5m"
+                    
+        valid_setup := (reversal_confirmed and continuation_confirmed) ? 1 : 0
+        
+        if valid_setup == 1 and prev_valid_setup == 0
+            active_eq_box := na
+            active_eq_line := na
+            setup_origin_tf := (reversal_tf == "1m" or continuation_tf == "1m") ? "1m" : "5m"
+            setup_reason := (bos_occurred and fvg_occurred) ? "BOS+FVG" : (bos_occurred ? "BOS" : (fvg_occurred ? "FVG" : "EQ"))
+            setup_reason_output := setup_reason
+            
+        bos_confirmed := (valid_setup == 1) and (setup_reason_output == "BOS" or setup_reason_output == "BOS+FVG")
+        fvg_confirmed := (valid_setup == 1) and (setup_reason_output == "FVG" or setup_reason_output == "BOS+FVG")
+
+// Output Directional State variables
+sweep_direction = (state == 0) ? 0 : sweep_dir
+
+// Calculate prospective stop loss and take profit
+float prospective_sl = sweep_extreme
+float prospective_tp = na
+if sweep_direction == 1
+    prospective_tp := f_find_closest_high(active_highs_1h, active_highs_4h, pdh, pdh_active, close)
+    if na(prospective_tp)
+        prospective_tp := close + 2.0 * chart_atr
+else if sweep_direction == -1
+    prospective_tp := f_find_closest_low(active_lows_1h, active_lows_4h, pdl, pdl_active, close)
+    if na(prospective_tp)
+        prospective_tp := close - 2.0 * chart_atr
+
+// Calculate prospective risk and reward
+float risk = sweep_direction == 1 ? close - prospective_sl : (sweep_direction == -1 ? prospective_sl - close : na)
+float reward = sweep_direction == 1 ? prospective_tp - close : (sweep_direction == -1 ? close - prospective_tp : na)
+
+// Calculate Risk-to-Reward Ratio and satisfaction condition
+float rr_ratio = risk > 0.0 ? reward / risk : 0.0
+bool rr_satisfied = rr_ratio >= 1.5
+
+// Compute emission control and setup triggers
+bool can_emit_setup = (setups_in_current_sweep < 3) and not (trade_active and trade_dir == sweep_direction) and rr_satisfied
+bool setup_emitted = false
+
+if valid_setup == 1 and prev_valid_setup == 0 and can_emit_setup
+    setup_emitted := true
+    setups_in_current_sweep := setups_in_current_sweep + 1
+    trade_active := true
+    trade_dir := sweep_direction
+    trade_sl := prospective_sl
+    trade_tp := prospective_tp
+    
+    // Draw trade lines if debug is enabled
+    if show_debug
+        if sweep_direction == 1
+            trade_tp_line := line.new(x1=time, y1=trade_tp, x2=time, y2=trade_tp, xloc=xloc.bar_time, color=color.new(color.green, 20), style=line.style_dotted, width=2)
+            trade_sl_line := line.new(x1=time, y1=trade_sl, x2=time, y2=trade_sl, xloc=xloc.bar_time, color=color.new(color.red, 20), style=line.style_solid, width=2)
+            trade_tp_label := label.new(x=time, y=trade_tp, text="TP: " + str.tostring(trade_tp, "#.##"), xloc=xloc.bar_time, color=color.green, textcolor=color.white, style=label.style_label_left, size=size.tiny)
+            trade_sl_label := label.new(x=time, y=trade_sl, text="SL: " + str.tostring(trade_sl, "#.##"), xloc=xloc.bar_time, color=color.red, textcolor=color.white, style=label.style_label_left, size=size.tiny)
+        else
+            trade_tp_line := line.new(x1=time, y1=trade_tp, x2=time, y2=trade_tp, xloc=xloc.bar_time, color=color.new(color.red, 20), style=line.style_dotted, width=2)
+            trade_sl_line := line.new(x1=time, y1=trade_sl, x2=time, y2=trade_sl, xloc=xloc.bar_time, color=color.new(color.green, 20), style=line.style_solid, width=2)
+            trade_tp_label := label.new(x=time, y=trade_tp, text="TP: " + str.tostring(trade_tp, "#.##"), xloc=xloc.bar_time, color=color.red, textcolor=color.white, style=label.style_label_left, size=size.tiny)
+            trade_sl_label := label.new(x=time, y=trade_sl, text="SL: " + str.tostring(trade_sl, "#.##"), xloc=xloc.bar_time, color=color.green, textcolor=color.white, style=label.style_label_left, size=size.tiny)
+
+// Directional structure features (only non-zero/non-na if aligned structure was confirmed)
+float bos_up_strength = (valid_setup == 1 and sweep_direction == 1 and bos_confirmed) ? 1.0 : 0.0
+float bos_down_strength = (valid_setup == 1 and sweep_direction == -1 and bos_confirmed) ? 1.0 : 0.0
+float fvg_bull_rejected = (valid_setup == 1 and sweep_direction == 1 and fvg_confirmed) ? 1.0 : 0.0
+float fvg_bear_rejected = (valid_setup == 1 and sweep_direction == -1 and fvg_confirmed) ? 1.0 : 0.0
+
+// Step 3 (Optional): Equilibrium Touch & Entry Geometry
+float equilibrium_val = na
+float retracement_depth = 0.0
+float distance_to_equilibrium = 0.0
+int time_since_sweep = 0
+
+if state == 2 and not na(sweep_extreme) and not na(current_extreme)
+    equilibrium_val := (sweep_extreme + current_extreme) / 2.0
+    float impulse_size = math.abs(sweep_extreme - current_extreme)
+    if impulse_size > 0.0
+        if sweep_dir == -1
+            retracement_depth := math.max(0.0, math.min(1.0, (close - current_extreme) / impulse_size))
+        else
+            retracement_depth := math.max(0.0, math.min(1.0, (current_extreme - close) / impulse_size))
+            
+    distance_to_equilibrium := sweep_dir * f_safe_div(close - equilibrium_val, close)
+
+if not na(sweep_bar_index)
+    time_since_sweep := bar_index - sweep_bar_index
+
+// Filtered outputs (for CSV/Data Window) - ONLY output when valid_setup == 1, else na
+out_sweep_direction   = (valid_setup == 1) ? sweep_direction : na
+out_liquidity_type     = (valid_setup == 1) ? liquidity_type : na
+out_liquidity_strength = (valid_setup == 1) ? liquidity_strength : na
+
+// Structure features
+out_bos_down_strength          = (valid_setup == 1 and sweep_direction == -1) ? bos_down_strength : na
+out_bearish_fvg_rejected       = (valid_setup == 1 and sweep_direction == -1) ? fvg_bear_rejected : na
+float out_bearish_displacement_size  = na // Displacement not required for structure filter
+
+out_bos_up_strength            = (valid_setup == 1 and sweep_direction == 1) ? bos_up_strength : na
+out_bullish_fvg_rejected       = (valid_setup == 1 and sweep_direction == 1) ? fvg_bull_rejected : na
+float out_bullish_displacement_size  = na
+
+// Entry geometry
+out_retracement_depth        = (valid_setup == 1) ? retracement_depth : na
+out_distance_to_equilibrium  = (valid_setup == 1) ? distance_to_equilibrium : na
+out_time_since_sweep         = (valid_setup == 1) ? time_since_sweep : na
+
+// Sessions
+out_ny_session               = (valid_setup == 1) ? ny_session : na
+out_london_session           = (valid_setup == 1) ? london_session : na
+out_asian_session            = (valid_setup == 1) ? asian_session : na
+
+out_suggested_tp = (valid_setup == 1) ? trade_tp : na
+out_suggested_sl = (valid_setup == 1) ? trade_sl : na
+
+// ==========================================
+// 8. DATA WINDOW PLOTS (FOR CSV EXPORT)
+// ==========================================
+out_setup_origin = (valid_setup == 1) ? (setup_origin_tf == "1m" ? 1.0 : 5.0) : na
+plot(out_sweep_direction, "sweep_direction", display=display.data_window)
+plot(out_liquidity_type, "liquidity_type", display=display.data_window)
+plot(out_liquidity_strength, "liquidity_strength", display=display.data_window)
+plot(out_setup_origin, "setup_origin", display=display.data_window)
+
+// Bearish features
+plot(out_bos_down_strength, "bos_down_strength", display=display.data_window)
+plot(out_bearish_fvg_rejected, "bearish_fvg_rejected", display=display.data_window)
+plot(out_bearish_displacement_size, "bearish_displacement_size", display=display.data_window)
+
+// Bullish features
+plot(out_bos_up_strength, "bos_up_strength", display=display.data_window)
+plot(out_bullish_fvg_rejected, "bullish_fvg_rejected", display=display.data_window)
+plot(out_bullish_displacement_size, "bullish_displacement_size", display=display.data_window)
+
+// Entry geometry
+plot(out_retracement_depth, "retracement_depth", display=display.data_window)
+plot(out_distance_to_equilibrium, "distance_to_equilibrium", display=display.data_window)
+plot(out_time_since_sweep, "time_since_sweep", display=display.data_window)
+
+// Sessions
+plot(out_ny_session, "ny_session", display=display.data_window)
+plot(out_london_session, "london_session", display=display.data_window)
+plot(out_asian_session, "asian_session", display=display.data_window)
+
+plot(out_suggested_tp, "suggested_tp", display=display.data_window)
+plot(out_suggested_sl, "suggested_sl", display=display.data_window)
+
+// ==========================================
+// 9. JSON ALERT CONSTRUCT & EMIT
+// ==========================================
+if setup_emitted and barstate.isconfirmed
+    string_bos_down_strength = (sweep_direction == -1) ? str.tostring(bos_down_strength, "#") : "null"
+    string_bearish_fvg_rejected = (sweep_direction == -1) ? str.tostring(fvg_bear_rejected, "#") : "null"
+    string_bearish_displacement_size = "null"
+    
+    string_bos_up_strength = (sweep_direction == 1) ? str.tostring(bos_up_strength, "#") : "null"
+    string_bullish_fvg_rejected = (sweep_direction == 1) ? str.tostring(fvg_bull_rejected, "#") : "null"
+    string_bullish_displacement_size = "null"
+
+    json_payload = "{" +
+      "\"time\":" + str.tostring(time) + "," +
+      "\"sweep_direction\":" + str.tostring(sweep_direction) + "," +
+      "\"liquidity_type\":" + str.tostring(liquidity_type) + "," +
+      "\"liquidity_strength\":" + str.tostring(liquidity_strength, "#.####") + "," +
+      "\"setup_origin_tf\":\"" + setup_origin_tf + "\"," +
+      
+      "\"bos_down_strength\":" + string_bos_down_strength + "," +
+      "\"bearish_fvg_rejected\":" + string_bearish_fvg_rejected + "," +
+      "\"bearish_displacement_size\":" + string_bearish_displacement_size + "," +
+      
+      "\"bos_up_strength\":" + string_bos_up_strength + "," +
+      "\"bullish_fvg_rejected\":" + string_bullish_fvg_rejected + "," +
+      "\"bullish_displacement_size\":" + string_bullish_displacement_size + "," +
+      
+      "\"retracement_depth\":" + str.tostring(retracement_depth, "#.####") + "," +
+      "\"distance_to_equilibrium\":" + str.tostring(distance_to_equilibrium, "#.######") + "," +
+      "\"time_since_sweep\":" + str.tostring(time_since_sweep) + "," +
+      "\"suggested_tp\":" + str.tostring(trade_tp, "#.##") + "," +
+      "\"suggested_sl\":" + str.tostring(trade_sl, "#.##") + "," +
+      
+      "\"ny_session\":" + str.tostring(ny_session) + "," +
+      "\"london_session\":" + str.tostring(london_session) + "," +
+      "\"asian_session\":" + str.tostring(asian_session) +
+    "}"
+    
+    alert(json_payload, alert.freq_once_per_bar_close)
+
+// ==========================================
+// 10. DEBUG MODE VISUALIZATION
+// ==========================================
+// Plot lines for PDH/PDL and singular levels when debug is enabled
+plot(show_debug ? pdh : na, "Debug PDH", color=color.blue, style=plot.style_stepline, linewidth=1)
+plot(show_debug ? pdl : na, "Debug PDL", color=color.blue, style=plot.style_stepline, linewidth=1)
+
+// Note: rolling 1H and 4H levels are drawn dynamically using line UDT fields when show_debug is true.
+
+// Mark sweeps on chart
+plotshape(show_debug and sweep_buy_side == 1, "Debug Sweep High", style=shape.diamond, location=location.abovebar, color=color.new(color.red, 30), size=size.tiny)
+plotshape(show_debug and sweep_sell_side == 1, "Debug Sweep Low", style=shape.diamond, location=location.belowbar, color=color.new(color.green, 30), size=size.tiny)
+
+// Mark start of setup search
+if show_debug
+    string liq_type_str = ""
+    if sweep_buy_side == 1
+        if sw_4h_high
+            liq_type_str := "4H"
+        else if sw_1h_high
+            liq_type_str := "1H"
+        else if pdh_sweep
+            liq_type_str := "Daily"
+    else if sweep_sell_side == 1
+        if sw_4h_low
+            liq_type_str := "4H"
+        else if sw_1h_low
+            liq_type_str := "1H"
+        else if pdl_sweep
+            liq_type_str := "Daily"
+
+    if is_new_sweep_event
+        if sweep_buy_side == 1
+            label.new(x=bar_index, y=na, text="Looking for SELL (" + liq_type_str + ")", yloc=yloc.abovebar, style=label.style_label_down, color=color.new(color.red, 20), textcolor=color.white, size=size.small)
+        else if sweep_sell_side == 1
+            label.new(x=bar_index, y=na, text="Looking for BUY (" + liq_type_str + ")", yloc=yloc.belowbar, style=label.style_label_up, color=color.new(color.green, 20), textcolor=color.white, size=size.small)
+
+// Mark 1m and 5m structure confirmations (BOS only) gated by sweep_dir
+plotshape(show_debug and state == 2 and sweep_dir == 1 and bos_up_1m == 1.0, "Debug 1m BOS", style=shape.circle, location=location.belowbar, color=color.blue, size=size.tiny)
+plotshape(show_debug and state == 2 and sweep_dir == -1 and bos_down_1m == 1.0, "Debug 1m BOS", style=shape.circle, location=location.abovebar, color=color.blue, size=size.tiny)
+plotshape(show_debug and state == 2 and sweep_dir == 1 and bos_up_5m == 1.0, "Debug 5m BOS", style=shape.circle, location=location.belowbar, color=color.navy, size=size.small)
+plotshape(show_debug and state == 2 and sweep_dir == -1 and bos_down_5m == 1.0, "Debug 5m BOS", style=shape.circle, location=location.abovebar, color=color.navy, size=size.small)
+
+// Draw FVG Boundary Boxes when rejected and matching active bias
+if show_debug and state == 2
+    if sweep_dir == 1 and fvg_bull_1m_event and not na(fvg_bull_top_1m) and not na(fvg_bull_bottom_1m)
+        box.new(left=bar_index - 3, top=fvg_bull_top_1m, right=bar_index, bottom=fvg_bull_bottom_1m, bgcolor=color.new(color.green, 92), border_color=color.new(color.green, 60), border_style=line.style_solid)
+    if sweep_dir == -1 and fvg_bear_1m_event and not na(fvg_bear_top_1m) and not na(fvg_bear_bottom_1m)
+        box.new(left=bar_index - 3, top=fvg_bear_top_1m, right=bar_index, bottom=fvg_bear_bottom_1m, bgcolor=color.new(color.red, 92), border_color=color.new(color.red, 60), border_style=line.style_solid)
+        
+    if sweep_dir == 1 and fvg_bull_5m_event and not na(fvg_bull_top_5m) and not na(fvg_bull_bottom_5m)
+        box.new(left=bar_index - 5, top=fvg_bull_top_5m, right=bar_index, bottom=fvg_bull_bottom_5m, bgcolor=color.new(color.green, 92), border_color=color.new(color.green, 60), border_style=line.style_dotted)
+    if sweep_dir == -1 and fvg_bear_5m_event and not na(fvg_bear_top_5m) and not na(fvg_bear_bottom_5m)
+        box.new(left=bar_index - 5, top=fvg_bear_top_5m, right=bar_index, bottom=fvg_bear_bottom_5m, bgcolor=color.new(color.red, 92), border_color=color.new(color.red, 60), border_style=line.style_dotted)
+
+// Mark when a setup becomes valid (BUY / SELL execution) with detailed reasoning
+if show_debug and setup_emitted
+    string label_text = ""
+    if sweep_direction == 1
+        label_text := "BUY (" + setup_origin_tf + (setup_reason_output != "" ? " " + setup_reason_output : "") + ")"
+        label.new(x=bar_index, y=na, text=label_text, yloc=yloc.belowbar, style=label.style_label_up, color=color.green, textcolor=color.white, size=size.small)
+    else
+        label_text := "SELL (" + setup_origin_tf + (setup_reason_output != "" ? " " + setup_reason_output : "") + ")"
+        label.new(x=bar_index, y=na, text=label_text, yloc=yloc.abovebar, style=label.style_label_down, color=color.red, textcolor=color.white, size=size.small)

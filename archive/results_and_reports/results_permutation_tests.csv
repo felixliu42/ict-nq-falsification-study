@@ -1,0 +1,9 @@
+Configuration,Avg Trades,Avg Return,Avg Max DD,Monthly Sharpe
+Baseline (All OFF),228.7,11.0%,18.1%,0.39
+Change 1 ON (BOS Trigger Only),353.8,13.2%,21.4%,0.45
+Change 2 ON (Split FVG Features),228.3,12.3%,19.1%,0.39
+Change 3 ON (Dealing Range Equilibrium),243.8,24.1%,10.1%,0.73
+Change 1 & 2 ON,352.2,0.8%,28.7%,0.00
+Change 1 & 3 ON,354.5,20.0%,14.5%,0.89
+Change 2 & 3 ON,244.2,21.0%,11.9%,0.50
+"All Changes ON (1, 2, & 3)",354.3,14.1%,18.5%,0.59

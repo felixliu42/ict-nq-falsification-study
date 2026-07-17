@@ -1,0 +1,55 @@
+{
+  "name": "6-Month Chronological Window Baseline (Th = 0.25, R < 60)",
+  "settings": {
+    "training_window_days": 180,
+    "decision_threshold": 0.25,
+    "risk_limit_points": 60.0,
+    "tp_mode": "split",
+    "sizing_contracts": 16,
+    "sizing_mode": "swing_extreme",
+    "walk_forward_warmup_days": 365
+  },
+  "lightgbm_hyperparameters": {
+    "n_estimators": 100,
+    "learning_rate": 0.05,
+    "max_depth": 4,
+    "num_leaves": 15,
+    "min_child_samples": 3,
+    "random_state": 42,
+    "verbosity": -1
+  },
+  "features": [
+    "liquidity_type",
+    "liquidity_strength",
+    "sweep_direction",
+    "sweep_size",
+    "bos_strength",
+    "fvg_rejected",
+    "retracement_depth",
+    "time_since_sweep",
+    "ny_session",
+    "london_session",
+    "asian_session"
+  ],
+  "results": {
+    "average": {
+      "trades": 422.4,
+      "return_pct": 17.72,
+      "max_drawdown_pct": 11.48,
+      "sharpe": 0.96
+    },
+    "yearly": [
+      { "year": 2016, "trades": 309, "return_pct": -4.80, "max_drawdown_pct": 10.35, "sharpe": -0.51 },
+      { "year": 2017, "trades": 625, "return_pct": -7.90, "max_drawdown_pct": 11.28, "sharpe": -0.94 },
+      { "year": 2018, "trades": 562, "return_pct": -14.75, "max_drawdown_pct": 36.11, "sharpe": -0.65 },
+      { "year": 2019, "trades": 494, "return_pct": 66.22, "max_drawdown_pct": 7.53, "sharpe": 4.02 },
+      { "year": 2020, "trades": 436, "return_pct": 58.56, "max_drawdown_pct": 14.73, "sharpe": 1.69 },
+      { "year": 2021, "trades": 412, "return_pct": 41.14, "max_drawdown_pct": 8.46, "sharpe": 2.46 },
+      { "year": 2022, "trades": 390, "return_pct": 39.20, "max_drawdown_pct": 7.31, "sharpe": 2.39 },
+      { "year": 2023, "trades": 410, "return_pct": 6.86, "max_drawdown_pct": 6.01, "sharpe": 0.90 },
+      { "year": 2024, "trades": 517, "return_pct": -1.29, "max_drawdown_pct": 8.86, "sharpe": -0.18 },
+      { "year": 2025, "trades": 370, "return_pct": 1.66, "max_drawdown_pct": 11.83, "sharpe": 0.22 },
+      { "year": 2026, "trades": 121, "return_pct": 9.99, "max_drawdown_pct": 3.78, "sharpe": 1.12 }
+    ]
+  }
+}

@@ -1,0 +1,532 @@
+EXPERIMENT BREAKDOWNS DETAILS
+================================================================================
+
+Experiment: Baseline (No Filters)
+Total Trades: 3763 | Win Rate: 14.1% | Expectancy: -0.05R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.02R (1856 trades)
+  - London: -0.02R (1928 trades)
+  - Asian: -0.07R (1024 trades)
+  - Other: -0.29R (140 trades)
+Liquidity Type Breakdown:
+  - Daily: -0.41R (118 trades)
+  - 1H: -0.05R (4196 trades)
+  - 4H: -0.04R (3212 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.05R (7442 trades)
+  - Setup #2: -0.36R (84 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.07R (3242 trades)
+  - SHORT: -0.04R (4284 trades)
+
+================================================================================
+
+Experiment: Sess: morning_only | Stop Mult: 0.90
+Total Trades: 917 | Win Rate: 18.4% | Expectancy: 0.05R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: 0.05R (917 trades)
+  - London: 0.06R (912 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -0.90R (6 trades)
+  - 1H: -0.01R (842 trades)
+  - 4H: 0.12R (986 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: 0.07R (1802 trades)
+  - Setup #2: -0.63R (32 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.02R (842 trades)
+  - SHORT: 0.12R (992 trades)
+
+================================================================================
+
+Experiment: Sess: morning_only | Stop Mult: 1.05
+Total Trades: 917 | Win Rate: 19.4% | Expectancy: -0.01R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.01R (917 trades)
+  - London: -0.00R (912 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -1.05R (6 trades)
+  - 1H: -0.07R (842 trades)
+  - 4H: 0.06R (986 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: 0.01R (1802 trades)
+  - Setup #2: -0.75R (32 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.06R (842 trades)
+  - SHORT: 0.04R (992 trades)
+
+================================================================================
+
+Experiment: Sess: morning_only | Stop Mult: 1.10
+Total Trades: 917 | Win Rate: 20.1% | Expectancy: 0.01R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: 0.01R (917 trades)
+  - London: 0.02R (912 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -1.10R (6 trades)
+  - 1H: -0.01R (842 trades)
+  - 4H: 0.04R (986 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: 0.03R (1802 trades)
+  - Setup #2: -0.79R (32 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.08R (842 trades)
+  - SHORT: 0.09R (992 trades)
+
+================================================================================
+
+Experiment: Sess: lunch_excluded | Stop Mult: 0.90
+Total Trades: 1294 | Win Rate: 16.2% | Expectancy: 0.03R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: 0.03R (1294 trades)
+  - London: 0.06R (912 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -0.90R (6 trades)
+  - 1H: -0.07R (1236 trades)
+  - 4H: 0.13R (1346 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: 0.04R (2552 trades)
+  - Setup #2: -0.66R (36 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: 0.05R (1144 trades)
+  - SHORT: 0.02R (1444 trades)
+
+================================================================================
+
+Experiment: Sess: lunch_excluded | Stop Mult: 1.05
+Total Trades: 1294 | Win Rate: 17.2% | Expectancy: -0.02R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.02R (1294 trades)
+  - London: -0.00R (912 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -1.05R (6 trades)
+  - 1H: -0.11R (1236 trades)
+  - 4H: 0.07R (1346 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.01R (2552 trades)
+  - Setup #2: -0.78R (36 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: 0.00R (1144 trades)
+  - SHORT: -0.04R (1444 trades)
+
+================================================================================
+
+Experiment: Sess: lunch_excluded | Stop Mult: 1.10
+Total Trades: 1294 | Win Rate: 17.9% | Expectancy: -0.01R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.01R (1294 trades)
+  - London: 0.02R (912 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -1.10R (6 trades)
+  - 1H: -0.06R (1236 trades)
+  - 4H: 0.04R (1346 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: 0.00R (2552 trades)
+  - Setup #2: -0.82R (36 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.02R (1144 trades)
+  - SHORT: 0.00R (1444 trades)
+
+================================================================================
+
+Experiment: Sess: morning_only | Daily Bias Reset: entire_day
+Total Trades: 739 | Win Rate: 17.5% | Expectancy: -0.03R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.03R (739 trades)
+  - London: -0.03R (736 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -1.00R (4 trades)
+  - 1H: -0.00R (626 trades)
+  - 4H: -0.05R (848 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.02R (1452 trades)
+  - Setup #2: -1.00R (26 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.12R (672 trades)
+  - SHORT: 0.04R (806 trades)
+
+================================================================================
+
+Experiment: Sess: morning_only | Daily Bias Reset: lunch_reset
+Total Trades: 741 | Win Rate: 17.4% | Expectancy: -0.04R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.04R (741 trades)
+  - London: -0.03R (736 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -1.00R (4 trades)
+  - 1H: -0.00R (626 trades)
+  - 4H: -0.05R (852 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.02R (1456 trades)
+  - Setup #2: -1.00R (26 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.12R (674 trades)
+  - SHORT: 0.04R (808 trades)
+
+================================================================================
+
+Experiment: Sess: morning_only | Daily Bias Reset: htf_sweep
+Total Trades: 795 | Win Rate: 18.5% | Expectancy: 0.07R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: 0.07R (795 trades)
+  - London: 0.07R (791 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -1.00R (6 trades)
+  - 1H: 0.03R (598 trades)
+  - 4H: 0.10R (986 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: 0.08R (1564 trades)
+  - Setup #2: -0.86R (26 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.01R (706 trades)
+  - SHORT: 0.13R (884 trades)
+
+================================================================================
+
+Experiment: Sess: lunch_excluded | Daily Bias Reset: entire_day
+Total Trades: 980 | Win Rate: 15.5% | Expectancy: -0.06R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.06R (980 trades)
+  - London: -0.03R (736 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -1.00R (4 trades)
+  - 1H: -0.11R (832 trades)
+  - 4H: -0.02R (1124 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.05R (1930 trades)
+  - Setup #2: -1.00R (30 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: 0.00R (866 trades)
+  - SHORT: -0.11R (1094 trades)
+
+================================================================================
+
+Experiment: Sess: lunch_excluded | Daily Bias Reset: lunch_reset
+Total Trades: 1118 | Win Rate: 15.4% | Expectancy: -0.05R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.05R (1118 trades)
+  - London: -0.03R (736 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -1.00R (4 trades)
+  - 1H: -0.10R (1020 trades)
+  - 4H: 0.00R (1212 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.03R (2206 trades)
+  - Setup #2: -1.00R (30 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.02R (976 trades)
+  - SHORT: -0.07R (1260 trades)
+
+================================================================================
+
+Experiment: Sess: lunch_excluded | Daily Bias Reset: htf_sweep
+Total Trades: 1076 | Win Rate: 16.5% | Expectancy: 0.04R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: 0.04R (1076 trades)
+  - London: 0.07R (791 trades)
+  - Asian: 0.00R (0 trades)
+  - Other: 0.00R (0 trades)
+Liquidity Type Breakdown:
+  - Daily: -1.00R (6 trades)
+  - 1H: -0.07R (800 trades)
+  - 4H: 0.11R (1346 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: 0.05R (2122 trades)
+  - Setup #2: -0.88R (30 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: 0.05R (934 trades)
+  - SHORT: 0.02R (1218 trades)
+
+================================================================================
+
+Experiment: Liq: daily_only | Max Setups: 1
+Total Trades: 59 | Win Rate: 13.6% | Expectancy: -0.41R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -1.00R (3 trades)
+  - London: -1.00R (4 trades)
+  - Asian: -0.37R (51 trades)
+  - Other: -0.45R (4 trades)
+Liquidity Type Breakdown:
+  - Daily: -0.41R (118 trades)
+  - 1H: 0.00R (0 trades)
+  - 4H: 0.00R (0 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.41R (118 trades)
+  - Setup #2: 0.00R (0 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: 0.34R (34 trades)
+  - SHORT: -0.72R (84 trades)
+
+================================================================================
+
+Experiment: Liq: daily_only | Max Setups: 2
+Total Trades: 59 | Win Rate: 13.6% | Expectancy: -0.41R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -1.00R (3 trades)
+  - London: -1.00R (4 trades)
+  - Asian: -0.37R (51 trades)
+  - Other: -0.45R (4 trades)
+Liquidity Type Breakdown:
+  - Daily: -0.41R (118 trades)
+  - 1H: 0.00R (0 trades)
+  - 4H: 0.00R (0 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.41R (118 trades)
+  - Setup #2: 0.00R (0 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: 0.34R (34 trades)
+  - SHORT: -0.72R (84 trades)
+
+================================================================================
+
+Experiment: Liq: daily_stacked_4h | Max Setups: 1
+Total Trades: 913 | Win Rate: 13.0% | Expectancy: 0.02R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: 0.11R (525 trades)
+  - London: -0.06R (475 trades)
+  - Asian: -0.06R (216 trades)
+  - Other: 0.04R (35 trades)
+Liquidity Type Breakdown:
+  - Daily: -0.41R (118 trades)
+  - 1H: 0.00R (0 trades)
+  - 4H: 0.05R (1708 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: 0.02R (1826 trades)
+  - Setup #2: 0.00R (0 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: 0.02R (684 trades)
+  - SHORT: 0.01R (1142 trades)
+
+================================================================================
+
+Experiment: Liq: daily_stacked_4h | Max Setups: 2
+Total Trades: 924 | Win Rate: 13.0% | Expectancy: 0.03R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: 0.14R (532 trades)
+  - London: -0.02R (482 trades)
+  - Asian: -0.07R (219 trades)
+  - Other: 0.04R (35 trades)
+Liquidity Type Breakdown:
+  - Daily: -0.41R (118 trades)
+  - 1H: 0.00R (0 trades)
+  - 4H: 0.06R (1730 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: 0.02R (1826 trades)
+  - Setup #2: 1.03R (22 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: 0.08R (692 trades)
+  - SHORT: 0.00R (1156 trades)
+
+================================================================================
+
+Experiment: Liq: stacked_only | Max Setups: 1
+Total Trades: 2020 | Win Rate: 14.1% | Expectancy: 0.05R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: 0.01R (1054 trades)
+  - London: 0.02R (1126 trades)
+  - Asian: 0.11R (490 trades)
+  - Other: -0.21R (61 trades)
+Liquidity Type Breakdown:
+  - Daily: 0.00R (0 trades)
+  - 1H: 0.05R (2332 trades)
+  - 4H: 0.05R (1708 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: 0.05R (4040 trades)
+  - Setup #2: 0.00R (0 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: 0.02R (1766 trades)
+  - SHORT: 0.07R (2274 trades)
+
+================================================================================
+
+Experiment: Liq: stacked_only | Max Setups: 2
+Total Trades: 2044 | Win Rate: 14.0% | Expectancy: 0.05R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: 0.02R (1067 trades)
+  - London: 0.03R (1142 trades)
+  - Asian: 0.10R (496 trades)
+  - Other: -0.21R (61 trades)
+Liquidity Type Breakdown:
+  - Daily: 0.00R (0 trades)
+  - 1H: 0.04R (2358 trades)
+  - 4H: 0.06R (1730 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: 0.05R (4040 trades)
+  - Setup #2: 0.00R (48 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: 0.04R (1786 trades)
+  - SHORT: 0.05R (2302 trades)
+
+================================================================================
+
+Experiment: Liq: exclude_singular_1h | Max Setups: 1
+Total Trades: 3717 | Win Rate: 14.1% | Expectancy: -0.05R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.02R (1831 trades)
+  - London: -0.02R (1900 trades)
+  - Asian: -0.07R (1013 trades)
+  - Other: -0.30R (137 trades)
+Liquidity Type Breakdown:
+  - Daily: -0.41R (118 trades)
+  - 1H: -0.04R (4148 trades)
+  - 4H: -0.04R (3168 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.05R (7434 trades)
+  - Setup #2: 0.00R (0 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.08R (3200 trades)
+  - SHORT: -0.03R (4234 trades)
+
+================================================================================
+
+Experiment: Liq: exclude_singular_1h | Max Setups: 2
+Total Trades: 3759 | Win Rate: 14.1% | Expectancy: -0.05R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.02R (1856 trades)
+  - London: -0.02R (1928 trades)
+  - Asian: -0.07R (1023 trades)
+  - Other: -0.30R (137 trades)
+Liquidity Type Breakdown:
+  - Daily: -0.41R (118 trades)
+  - 1H: -0.05R (4188 trades)
+  - 4H: -0.04R (3212 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.05R (7434 trades)
+  - Setup #2: -0.36R (84 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.07R (3240 trades)
+  - SHORT: -0.04R (4278 trades)
+
+================================================================================
+
+Experiment: Penetration Allowed: ['medium', 'large']
+Total Trades: 1701 | Win Rate: 16.0% | Expectancy: -0.06R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.13R (719 trades)
+  - London: 0.07R (803 trades)
+  - Asian: -0.16R (533 trades)
+  - Other: -0.21R (79 trades)
+Liquidity Type Breakdown:
+  - Daily: -0.48R (68 trades)
+  - 1H: -0.02R (2012 trades)
+  - 4H: -0.09R (1322 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.07R (3374 trades)
+  - Setup #2: 0.72R (28 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.04R (1580 trades)
+  - SHORT: -0.08R (1822 trades)
+
+================================================================================
+
+Experiment: Penetration Allowed: ['small', 'medium']
+Total Trades: 3616 | Win Rate: 13.6% | Expectancy: -0.05R
+----------------------------------------
+Session Breakdown (Expectancy / Trades):
+  - NY: -0.01R (1798 trades)
+  - London: -0.00R (1868 trades)
+  - Asian: -0.07R (977 trades)
+  - Other: -0.47R (119 trades)
+Liquidity Type Breakdown:
+  - Daily: -0.47R (112 trades)
+  - 1H: -0.04R (4028 trades)
+  - 4H: -0.04R (3092 trades)
+Setup Sequence Number Breakdown:
+  - Setup #1: -0.05R (7150 trades)
+  - Setup #2: -0.34R (82 trades)
+  - Setup #3: 0.00R (0 trades)
+  - Setup #other: 0.00R (0 trades)
+Trade Direction Breakdown:
+  - LONG: -0.08R (3128 trades)
+  - SHORT: -0.03R (4104 trades)
+
+================================================================================
+

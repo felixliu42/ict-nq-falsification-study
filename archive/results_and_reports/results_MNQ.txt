@@ -1,0 +1,8 @@
+Symbol: MNQ
+Average Trades: 253.2
+Average Flat Return: 10.4%
+Average Compounded Return: 78.2%
+Average Flat Max DD: 9.7%
+Average Compounded Max DD: 52.6%
+Average Flat Sharpe: 0.41
+Average Compounded Sharpe: 0.16

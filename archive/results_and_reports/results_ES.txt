@@ -1,0 +1,8 @@
+Symbol: ES
+Average Trades: 239.5
+Average Flat Return: -5.1%
+Average Compounded Return: -84.2%
+Average Flat Max DD: 25.3%
+Average Compounded Max DD: 401.9%
+Average Flat Sharpe: -0.44
+Average Compounded Sharpe: -0.05

@@ -1,0 +1,7 @@
+Test Name,Feature,Average Return,Average Max DD,Monthly Sharpe
+Baseline (No VIX),None,18.9%,11.7%,0.69
+Raw 1m VIX close,vix_raw,10.9%,16.4%,0.40
+VIX vs. ma60,vix_vs_ma60,7.3%,17.5%,0.21
+VIX vs. ma1440,vix_vs_ma1440,13.7%,14.6%,0.34
+VIX vs. ma28800,vix_vs_ma28800,13.7%,15.2%,0.62
+VIX vs. ma362880,vix_vs_ma362880,3.4%,20.8%,0.00
