@@ -2,6 +2,7 @@
 data/*
 !data/README.md
 archive/data/
+archive/old_outputs/*.csv
 
 # Caches & build artifacts
 __pycache__/
