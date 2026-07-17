@@ -20,6 +20,12 @@ An 11-year systematic evaluation (2015–2026, 3.79M one-minute bars) of whether
 
 ![Selection bias](docs/figures/fig2_nested.png)
 
+## Study #2: the overnight return premium (a positive result, with limits)
+
+As a counterpoint to the falsification, the same validation machinery was pointed at a *documented* anomaly: the overnight vs. intraday return split (Cliff/Cooper/Gulen 2008; Lou/Polk/Skouras, JFE 2019), measured here on tradeable futures prices with a clock-defined, zero-parameter design. Result: a real and stable overnight premium in NQ (+9.3%/yr net of costs, P(≤0) = 1.1%, stable across a pre-registered subperiod split) — but weaker than the classic literature claims, not an improvement over buy-and-hold in this sample, and dead after costs on ES. Full writeup: [`docs/OVERNIGHT_INTRADAY_STUDY.md`](docs/OVERNIGHT_INTRADAY_STUDY.md).
+
+![Overnight curves](docs/figures/fig_overnight_curves.png)
+
 ## Repository layout
 
 ```
