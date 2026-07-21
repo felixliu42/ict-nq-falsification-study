@@ -20,6 +20,25 @@ Cost model: $4.60 all-in round-trip commission per NQ contract; 1 tick ($5) slip
 
 Costs consume **36–74% of the gross edge**. Applied to the reported LightGBM numbers ($42/trade gross), the same per-trade drag implies roughly 12%/yr net A, 6–7% net B — before the selection-bias haircut below.
 
+### Test 1b — Broker-tier sensitivity (does the conclusion depend on the cost assumption?)
+
+The report's headline cost assumption ($4.60 round-turn per NQ-equivalent contract) is a modeled figure. Because the entire conclusion hinges on costs, the table below re-runs the baseline configuration across published commission schedules (July 2026), holding slippage fixed at one tick on stop-side exits. Exchange + clearing fees (~$1.60/contract round-turn for E-minis, ~$0.55 for Micros) are unavoidable at any broker and are included in every row.
+
+| Venue / broker (round-turn) | Cost/trade | Net $/trade | CAGR | Sharpe |
+| --- | --- | --- | --- | --- |
+| Theoretical zero cost (bound) | $0.00 | $31.04 | 6.60% | 0.50 |
+| NQ ×1.6 — NinjaTrader Lifetime ($0.09/side) | $2.85 | $28.19 | 6.13% | 0.46 |
+| NQ ×1.6 — Webull (~$0.70/contract) | $4.80 | $26.24 | 5.80% | 0.44 |
+| NQ ×1.6 — Tradovate ($1.29/side) | $6.69 | $24.35 | 5.47% | 0.41 |
+| **NQ ×1.6 — report assumption** | **$7.36** | **$23.68** | **5.35%** | **0.40** |
+| MNQ ×16 — NinjaTrader Lifetime | $11.68 | $19.36 | 4.54% | 0.34 |
+| MNQ ×16 — Webull | $16.80 | $14.24 | 3.50% | 0.28 |
+| MNQ ×16 — Tradovate | $21.28 | $9.76 | 2.51% | 0.22 |
+
+Two conclusions. First, **the finding is not an artifact of the cost assumption**: even at literally zero commission the gross-to-net gap is modest (0.59 → 0.50 Sharpe), and every realistic tier lands between 0.22 and 0.46 — all far below the reported 0.96, and all still subject to the selection-bias correction in Test 3, which roughly halves them again. Second, **contract choice matters more than broker choice**: the original strategy specified 16 MNQ micros, which cost 2–3× more than the equivalent 1.6 NQ minis for identical exposure, because per-contract fees dominate. Sizing in minis rather than micros is the single largest cost improvement available, worth more than any broker switch.
+
+*Sources: [CME clearing fees](https://www.cmegroup.com/company/clearing-fees.html), [Tradovate pricing](https://www.tradovate.com/pricing/), [NinjaTrader pricing](https://ninjatrader.com/pricing/), [Webull futures fees (BrokerChooser)](https://brokerchooser.com/broker-reviews/webull-review/micro-emini-nasdaq100-futures-fees). Commission schedules change; exchange fees vary with CME membership status and volume tier.*
+
 ## Test 2 — Honest metric conventions
 
 The reported 0.96 "Sharpe" is an average of per-year Sharpes (12 monthly points each), carried by 2019's +4.02. Pooling all months: **gross pooled Sharpe ≈ 0.59–0.62** (substitute run and reported yearly table agree). The reported 11.48% "max DD" is an average of yearly DDs; the full-period max DD is 24% gross / 33% net (reported table's own 2018 shows 36%). Honest **Calmar ≈ 0.16–0.31**, not ~1.5.
