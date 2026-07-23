@@ -2,7 +2,7 @@
 
 An 11-year systematic evaluation (2015–2026, 3.79M one-minute bars) of whether "Smart Money Concepts" (ICT) — liquidity sweeps, breaks of structure, fair value gaps, order blocks, and higher-timeframe bias — can be automated into a profitable trading system on NQ/MNQ futures.
 
-**Headline finding:** they can't, and this repository shows exactly why the backtests that said otherwise were wrong. A walk-forward LightGBM strategy that appeared to earn **+17.7%/yr at a 0.96 Sharpe** was reduced, by a five-part validation battery, to a cost-adjusted, selection-bias-corrected Sharpe of **≈0.2 — statistically indistinguishable from zero** — with no edge at all in the most recent 3.5 years. A faithful implementation of a publicly-taught top-down ICT playbook performed indistinguishably from random entries.
+Conclusion: ICT concepts cannot be automated in a profitable way. This repository details how I implemented Smart Money Concepts as a trading bot, how incorrect statistical backtests of a walk-forward LightGBM strategy suggested returns of +17.7%/yr at a 0.96 Sharpe ratio, and how rigorous validation tests reduced reported returns to a more honest, cost-adjusted, selection-bias-corrected Sharpe of 0.2, with no edge at all in the most recent 3.5 years. An additional implementation of a publicly-taught top-down ICT playbook performed indistinguishably from random entries, serving as further evidence that ICT concepts have no statistical edge in the NQ futures market.
 
 📄 **Read the full study:** [`docs/ICT_Research_Report.docx`](docs/ICT_Research_Report.docx)
 
@@ -12,15 +12,15 @@ An 11-year systematic evaluation (2015–2026, 3.79M one-minute bars) of whether
 
 | Correction | Effect |
 | --- | --- |
-| Honest metric conventions (pooled Sharpe, full-period drawdown) | 0.96 → ~0.6 Sharpe, Calmar ~1.5 → ~0.3 |
+| Corrected metric conventions (pooled Sharpe, full-period drawdown) | 0.96 → ~0.6 Sharpe, Calmar ~1.5 → ~0.3 |
 | Transaction costs (NQ commissions + slippage) | 36–74% of gross per-trade edge |
 | Nested (prior-data-only) configuration selection | ~half of net performance |
-| Classifier-implementation swap test | gross edge not reproducible (17.7% → ~4.5%/yr at matched trade count) |
+| Model implementation swap test | gross edge not reproducible (17.7% → ~4.5%/yr at matched trade count) |
 | Regime concentration | profits confined to 2019–2022; ≈0 net edge since 2023 |
 
 ![Selection bias](docs/figures/fig2_nested.png)
 
-**Companion study:** the same validation machinery applied to a *documented* anomaly — the overnight return premium in NQ/ES futures — lives in its own repository (`overnight-returns-futures`): a positive result, with honestly measured limits.
+**Companion study:** the same validation tests applied to the overnight return premium in NQ/ES futures lives in its own repository (`overnight-returns-futures`): a positive result, with honestly measured application limits.
 
 ## Repository layout
 
@@ -44,13 +44,13 @@ pip install pandas numpy lightgbm matplotlib pytz
 # demo (no market data needed):
 python src/pipeline.py --input examples/demo_tv_export.csv --output /tmp/demo_ml.csv
 pytest                       # unit tests
-# full baseline backtest (requires data/ — see data/README.md):
+# full baseline backtest (requires data/ - see data/README.md):
 python src/run_baseline_backtest.py
 python src/htf_bias_strategy.py
 ```
 
 ## Key methodological takeaways
 
-Average-of-yearly Sharpe ratios and averaged yearly drawdowns systematically overstate performance. Configuration selection bias is measurable with a nested walk-forward and, here, erased half the result. Retraining with an equivalently-specified model from a different codebase is a powerful overfitting detector. With fixed per-trade frictions, trade frequency is a liability for thin-edge signals. Random-entry benchmarks with identical exit machinery isolate whether entry logic contributes anything. And negative results only retain value if they're recorded — all 17 phases are documented in [`docs/EXPERIMENT_HISTORY.md`](docs/EXPERIMENT_HISTORY.md).
+Average-of-yearly Sharpe ratios and averaged yearly drawdowns systematically overstate performance. Configuration selection bias is measurable with a nested walk-forward and, here, erased half the result. Retraining with an equivalently-specified model from a different codebase is a powerful overfitting detector. With fixed per-trade frictions, trade frequency is a liability for thin-edge signals. Random-entry benchmarks with identical exit machinery isolate whether entry logic contributes anything. And negative results only retain value if they're recorded - all 17 phases are documented in [`docs/EXPERIMENT_HISTORY.md`](docs/EXPERIMENT_HISTORY.md).
 
-*Not financial advice. Built for research and educational purposes.*
+*Not financial advice. Built for research purposes.*
